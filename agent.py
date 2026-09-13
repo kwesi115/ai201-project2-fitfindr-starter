@@ -147,7 +147,7 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     session["parsed"] = parsed
     session["parse_method"] = method
     if method == "regex":
-        session["warnings"].append("Query parsed with regex fallback (LLM parser unavailable).")
+        session["warnings"].append("Query parsed with regex fallback (LLM parse failed or found no item).")
     if not parsed["description"]:
         session["error"] = (
             f"I couldn't tell what item you want from \"{query}\". Name the piece — for "

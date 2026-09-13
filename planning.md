@@ -146,7 +146,7 @@ Call `session = _new_session(query, wardrobe)`. Check `query is None or query.st
 - Otherwise, proceed to Step 2.
 
 **Step 2 — Parse.**
-Call `parsed, method = parse_query(query)`. Set `session["parsed"] = parsed` and `session["parse_method"] = method`. If `method == "regex"`, append `"Query parsed with regex fallback (LLM parser unavailable)."` to `session["warnings"]`.
+Call `parsed, method = parse_query(query)`. Set `session["parsed"] = parsed` and `session["parse_method"] = method`. If `method == "regex"`, append `"Query parsed with regex fallback (LLM parse failed or found no item)."` to `session["warnings"]`.
 Then check `parsed["description"] == ""`.
 - If true: set `session["error"] = f"I couldn't tell what item you want from \"{query}\". Name the piece — for example \"graphic tee\", \"cargo pants\", or \"chelsea boots\" — and add a size or price if you like."` and `return session`.
 - Otherwise, proceed to Step 3.
