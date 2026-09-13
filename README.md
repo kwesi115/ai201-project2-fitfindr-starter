@@ -1,5 +1,7 @@
 # FitFindr
 
+Demo Link: https://youtu.be/lByIPgT15yE
+
 FitFindr is an agent for secondhand shopping. You describe a piece you want ("vintage graphic tee under $30"). It searches a set of 40 mock Depop/thredUp/Poshmark listings, picks the best match, and suggests outfits using clothes you already own. It then writes a social-media caption ("fit card") for the look.
 
 The interesting part is not the three tools. It's the **planning loop** that decides, at each step, whether to keep going, stop and explain what went wrong, or carry on in a reduced mode. Most of this README is about those decisions.
