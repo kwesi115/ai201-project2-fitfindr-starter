@@ -13,7 +13,7 @@ List every tool your agent will use. For each tool, fill in all four fields.
 You must have at least 3 tools. The three required tools are listed — add any additional tools below them.
 
 **Shared constants (top of `tools.py`):**
-- `MODEL = "llama-3.3-70b-versatile"` — Groq model used by every LLM call, via the existing `_get_groq_client()`.
+- `MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")` — Groq model used by every LLM call, via the existing `_get_groq_client()`. No Llama chat models (including `meta-llama/llama-4-scout-17b-16e-instruct`) are available to this key, so the default is gpt-oss-120b. It's a reasoning model: calls pass `reasoning_effort="low"`, and `max_tokens` budgets leave room for hidden reasoning tokens so the visible output isn't cut off.
 - `COLOR_WORDS: set[str]`: every token that appears in any listing's `colors` field, built once from `load_listings()` (e.g. `black`, `navy`, `tan`, `faded`, `olive`).
 - `FIT_CARD_ERROR_PREFIX = "Couldn't create a fit card:"`
 
@@ -60,7 +60,7 @@ Sends the selected listing and the user's wardrobe to the Groq LLM and returns 1
 
 **What it returns:**
 `str`, always non-empty. Two modes:
-- **Wardrobe has items:** the prompt lists each item as `- {name} ({category}; colors: {colors}; tags: {style_tags}; notes: {notes or "none"})` and asks for exactly this format, at temperature 0.7 with max_tokens 400:
+- **Wardrobe has items:** the prompt lists each item as `- "{name}" ({category}; colors: {colors}; tags: {style_tags}; notes: {notes or "none"})` and asks. The name is quoted because some names contain commas ("Baggy straight-leg jeans, dark wash"), which the model otherwise truncates. The prompt also asks for exactly this format, at temperature 0.7 with max_tokens 1024:
   ```
   Outfit 1: <new item title> + <wardrobe name> + <wardrobe name> [+ ...] — <one sentence on why it works>
   Outfit 2: <new item title> + <wardrobe name> + <wardrobe name> [+ ...] — <one sentence on why it works>
@@ -85,7 +85,7 @@ Turns the selected listing and its outfit suggestion into a 2–4 sentence casua
 - `new_item` (dict): the same listing dict passed to `suggest_outfit`. Required keys: `title`, `price`, `platform`. `condition` is used if present.
 
 **What it returns:**
-`str`, the caption. Prompt rules (temperature 1.0 so repeated runs differ, max_tokens 150):
+`str`, the caption. Prompt rules (temperature 1.0 so repeated runs differ, max_tokens 512):
 - 2–4 sentences, lowercase, first-person OOTD voice. Not a product description.
 - Mentions a short form of the title (the part before ` — `, e.g. "2003 tour bootleg tee"), the price as `$24`, and the platform name, **once each**.
 - Names at least one wardrobe piece or pairing from `outfit`.
@@ -119,9 +119,9 @@ Converts the raw natural-language query into the three `search_listings` argumen
 
 LLM call: temperature 0, `response_format={"type": "json_object"}`. The system prompt says: *"Extract the ONE clothing item the user wants to buy. Return JSON with keys description (short lowercase item phrase, no price or size words, exclude items they already own), size (string exactly as written, or null), max_price (number, or null)."*
 
-The result is valid only if it's a dict with a non-empty string `description`, `size` that is a string or null, and `max_price` that is a positive number or null. Anything else goes to the regex fallback.
+The result is valid only if it's a dict with a non-empty string `description`, `size` that is a string, a number (converted to a string), or null, and `max_price` that is a positive number or null. Anything else goes to the regex fallback.
 
-Regex fallback (`_regex_parse`), applied to the first sentence only (`re.split(r"[.?!]", query, maxsplit=1)[0]`):
+Regex fallback (`_regex_parse`), applied to the first sentence only (`re.split(r"[.?!](?:\s|$)", query, maxsplit=1)[0]`, which splits only on punctuation followed by whitespace, so "$29.99" stays whole):
 - price: `(?:under|below|less than|max|up to)\s*\$?\s*(\d+(?:\.\d+)?)|\$(\d+(?:\.\d+)?)` (case-insensitive)
 - size: `\bsize\s+((?:us\s+)?[a-z0-9./]+)` (case-insensitive), else bare `\b(XXS|XS|S|M|L|XL|XXL)\b` (case-sensitive, so the "m" in "I'm" doesn't match). The size is uppercased.
 - description: remove the matched price and size text, remove filler `\b(i'?m|i am|looking for|i want|i need|find me|show me|a|an|some|in)\b`, replace punctuation with spaces, collapse whitespace, lowercase.
@@ -207,9 +207,10 @@ All state for one interaction lives in the single `session` dict created by `_ne
 | `outfit_suggestion` | str \| None | Step 6 | `create_fit_card` (7), `app.py` outfit panel |
 | `fit_card` | str \| None | Step 7 | `app.py` fit card panel |
 | `warnings` | list[str] | Steps 2, 7 | printed in CLI, not shown in UI |
+| `tool_calls` | list[str] | appended just before each tool call (Steps 2, 3, 4b, 6, 7) | `python agent.py` trace: shows which tools actually ran |
 | `error` | str \| None | Steps 1, 2, 4, 6, 7 | `app.py`: if set, shown in panel 1, panels 2–3 empty |
 
-New keys to add to `_new_session()`: `parse_method: None`, `relaxed_results: []`, `warnings: []`.
+New keys to add to `_new_session()`: `parse_method: None`, `relaxed_results: []`, `warnings: []`, `tool_calls: []`.
 
 `app.py`'s `handle_query` formats the listing panel from `selected_item` as:
 ```
@@ -343,7 +344,7 @@ Planning Loop (agent.py) ──────────────────�
     2. It does **not** wrap the Groq call in try/except.
     3. Temperature is 0.7.
     4. The empty-response fallback exists.
-    5. Wardrobe items are formatted exactly as `- {name} ({category}; colors: ...; tags: ...; notes: ...)`.
+    5. Wardrobe items are formatted exactly as `- "{name}" ({category}; colors: ...; tags: ...; notes: ...)`.
   - **Tests** (3 live calls):
     - `lst_006` + example wardrobe → contains `"Outfit 1:"`, and at least 2 wardrobe `name` strings appear verbatim.
     - `lst_006` + empty wardrobe → starts with `"You haven't added any wardrobe pieces yet"`.
